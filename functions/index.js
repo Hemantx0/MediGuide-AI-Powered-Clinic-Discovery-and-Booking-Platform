@@ -7,6 +7,43 @@ initializeApp();
 const GEMINI_API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const MAX_HISTORY_MESSAGES = 8;
+const DEFAULT_DISCLAIMER = "This chatbot provides general health guidance only and is not a substitute for a licensed medical professional.";
+const STRUCTURED_SYSTEM_PROMPT = `
+You are a healthcare guidance assistant for an AI chatbot.
+Your role is to help users understand symptoms in a safe and structured way.
+You are NOT a doctor and you must NOT provide a final diagnosis.
+
+Rules:
+- Always respond in valid JSON only.
+- Do not include markdown.
+- Do not include code fences.
+- Do not add any text outside JSON.
+- Keep language simple and user-friendly.
+- Mention only possible conditions, never confirm a diagnosis.
+- If symptoms may indicate a dangerous situation, set urgency_level to 'emergency' and emergency to true.
+- Always include a disclaimer that the chatbot is not a substitute for a licensed medical professional.
+
+Return JSON in exactly this format:
+{
+  "symptom_summary": "short summary of what the user is experiencing",
+  "possible_conditions": ["condition 1", "condition 2", "condition 3"],
+  "urgency_level": "low|medium|high|emergency",
+  "recommended_specialist": "doctor type",
+  "next_steps": ["step 1", "step 2", "step 3"],
+  "emergency": false,
+  "disclaimer": "This chatbot provides general health guidance only and is not a substitute for a licensed medical professional."
+}
+
+Decision guidance:
+- low: mild symptoms, self-care or routine consultation may be enough
+- medium: should consult a doctor soon
+- high: medical evaluation recommended as early as possible
+- emergency: immediate emergency care needed
+
+Important:
+- Chest pain, breathing difficulty, stroke-like symptoms, severe bleeding, loss of consciousness, seizures, or suicidal intent should strongly suggest emergency.
+- Keep responses concise, safe, and structured.
+`.trim();
 
 const symptomMap = [
   { keywords: ["fever", "cold", "cough", "flu", "headache", "body ache", "fatigue", "weakness", "nausea", "vomit"], specialty: "General Physician" },
@@ -36,65 +73,34 @@ const emergencyKeywords = [
   "suicidal"
 ];
 
-const SYSTEM_PROMPT = `
-You are Vital Chat's healthcare guidance assistant for a college project.
-Your job is to:
-- understand the user's health concern
-- ask for clarification when symptoms are vague
-- recommend the most relevant medical specialty
-- detect urgent or emergency language
-- keep the tone calm, clear, and supportive
-
-Safety rules:
-- do not provide a final medical diagnosis
-- do not prescribe medicines or dosages
-- do not claim certainty about disease
-- when symptoms sound severe, tell the user to seek urgent or emergency care
-- when information is limited, ask a short follow-up question
-
-Return only valid JSON with this exact shape:
-{
-  "intent": "greeting" | "help" | "symptom_check" | "specialist_search" | "unclear" | "emergency",
-  "reply": "string",
-  "specialty": "string or null",
-  "urgency": "low" | "medium" | "high",
-  "emergency": true or false,
-  "needsLocation": true or false,
-  "needsMoreInfo": true or false,
-  "followUpQuestion": "string or null",
-  "symptomSummary": "string or null"
-}
-`.trim();
-
 const ASSISTANT_RESPONSE_SCHEMA = {
   type: "object",
   properties: {
-    intent: {
-      type: "string",
-      enum: ["greeting", "help", "symptom_check", "specialist_search", "unclear", "emergency"]
+    symptom_summary: { type: "string" },
+    possible_conditions: {
+      type: "array",
+      items: { type: "string" }
     },
-    reply: { type: "string" },
-    specialty: { type: ["string", "null"] },
-    urgency: {
+    urgency_level: {
       type: "string",
-      enum: ["low", "medium", "high"]
+      enum: ["low", "medium", "high", "emergency"]
+    },
+    recommended_specialist: { type: "string" },
+    next_steps: {
+      type: "array",
+      items: { type: "string" }
     },
     emergency: { type: "boolean" },
-    needsLocation: { type: "boolean" },
-    needsMoreInfo: { type: "boolean" },
-    followUpQuestion: { type: ["string", "null"] },
-    symptomSummary: { type: ["string", "null"] }
+    disclaimer: { type: "string" }
   },
   required: [
-    "intent",
-    "reply",
-    "specialty",
-    "urgency",
+    "symptom_summary",
+    "possible_conditions",
+    "urgency_level",
+    "recommended_specialist",
+    "next_steps",
     "emergency",
-    "needsLocation",
-    "needsMoreInfo",
-    "followUpQuestion",
-    "symptomSummary"
+    "disclaimer"
   ]
 };
 
@@ -143,100 +149,242 @@ function matchSpecialty(text) {
   return matches[0]?.specialty || null;
 }
 
-function fallbackAssistantResponse(message) {
+function detectIntent(message) {
   const normalized = normalizeText(message);
 
   if (greetingWords.some((word) => containsKeyword(normalized, word))) {
+    return "greeting";
+  }
+
+  if (helpWords.some((word) => containsKeyword(normalized, word))) {
+    return "help";
+  }
+
+  if (emergencyKeywords.some((word) => containsKeyword(normalized, word))) {
+    return "emergency";
+  }
+
+  return matchSpecialty(message) ? "symptom_check" : "unclear";
+}
+
+function buildReplyFromStructuredPayload(payload) {
+  const parts = [];
+
+  if (payload.symptom_summary) {
+    parts.push(`Summary: ${payload.symptom_summary}.`);
+  }
+
+  if (Array.isArray(payload.possible_conditions) && payload.possible_conditions.length > 0) {
+    parts.push(`Possible conditions: ${payload.possible_conditions.join(", ")}.`);
+  }
+
+  if (payload.recommended_specialist) {
+    parts.push(`Recommended specialist: ${payload.recommended_specialist}.`);
+  }
+
+  if (Array.isArray(payload.next_steps) && payload.next_steps.length > 0) {
+    parts.push(`Next steps: ${payload.next_steps.join(" ")}`);
+  }
+
+  if (payload.disclaimer) {
+    parts.push(payload.disclaimer);
+  }
+
+  return parts.join(" ").trim();
+}
+
+function extractJsonCandidate(text) {
+  const rawText = String(text || "").trim();
+  if (!rawText) return "";
+
+  const fencedMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = fencedMatch ? fencedMatch[1].trim() : rawText;
+
+  const firstBrace = candidate.indexOf("{");
+  const lastBrace = candidate.lastIndexOf("}");
+  if (firstBrace === -1 || lastBrace === -1 || lastBrace <= firstBrace) {
+    return candidate;
+  }
+
+  return candidate.slice(firstBrace, lastBrace + 1);
+}
+
+function safeJsonParse(text) {
+  const candidate = extractJsonCandidate(text);
+  if (!candidate) return null;
+
+  const attempts = [
+    candidate,
+    candidate.replace(/^\uFEFF/, ""),
+    candidate.replace(/,\s*([}\]])/g, "$1"),
+    candidate.replace(/[\u201C\u201D]/g, "\"").replace(/[\u2018\u2019]/g, "'"),
+    candidate
+      .replace(/[\u201C\u201D]/g, "\"")
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/,\s*([}\]])/g, "$1")
+  ];
+
+  for (const attempt of attempts) {
+    try {
+      return JSON.parse(attempt);
+    } catch (error) {
+      // Try the next cleanup strategy.
+    }
+  }
+
+  return null;
+}
+
+function fallbackAssistantResponse(message) {
+  const normalized = normalizeText(message);
+  const specialty = matchSpecialty(message);
+  const baseDisclaimer = DEFAULT_DISCLAIMER;
+
+  if (greetingWords.some((word) => containsKeyword(normalized, word))) {
     return {
-      intent: "greeting",
-      reply: "Hello! Please tell me your symptoms in simple words, or mention the specialist you want, such as dentist or cardiologist.",
-      specialty: null,
-      urgency: "low",
+      symptom_summary: "The user greeted the assistant and has not described symptoms yet.",
+      possible_conditions: ["No symptoms provided yet"],
+      urgency_level: "low",
+      recommended_specialist: "General Physician",
+      next_steps: [
+        "Describe the main symptom in simple words.",
+        "Mention how long the symptom has been present.",
+        "Share any severe warning signs if present."
+      ],
       emergency: false,
-      needsLocation: false,
-      needsMoreInfo: true,
-      followUpQuestion: null,
-      symptomSummary: null
+      disclaimer: baseDisclaimer
     };
   }
 
   if (helpWords.some((word) => containsKeyword(normalized, word))) {
     return {
-      intent: "help",
-      reply: "You can type symptoms like 'fever and cough' or say which doctor you need, such as 'I need a dentist'.",
-      specialty: null,
-      urgency: "low",
+      symptom_summary: "The user asked for help using the healthcare chatbot.",
+      possible_conditions: ["Symptoms not shared yet"],
+      urgency_level: "low",
+      recommended_specialist: "General Physician",
+      next_steps: [
+        "Type your main symptoms, such as fever, cough, or stomach pain.",
+        "Add how long the symptoms have been happening.",
+        "Mention if the symptoms are getting worse."
+      ],
       emergency: false,
-      needsLocation: false,
-      needsMoreInfo: true,
-      followUpQuestion: null,
-      symptomSummary: null
+      disclaimer: baseDisclaimer
     };
   }
 
   if (emergencyKeywords.some((word) => containsKeyword(normalized, word))) {
     return {
-      intent: "emergency",
-      reply: "These symptoms may need urgent medical attention. Please seek immediate care at the nearest emergency facility or call local emergency services if the condition is severe.",
-      specialty: "Emergency Care",
-      urgency: "high",
+      symptom_summary: message,
+      possible_conditions: ["Serious medical emergency", "Urgent cardiopulmonary or neurological event"],
+      urgency_level: "emergency",
+      recommended_specialist: "General Physician",
+      next_steps: [
+        "Seek emergency medical care immediately.",
+        "Call local emergency services right away if symptoms are severe or worsening.",
+        "Do not delay in-person evaluation."
+      ],
       emergency: true,
-      needsLocation: false,
-      needsMoreInfo: false,
-      followUpQuestion: null,
-      symptomSummary: message
+      disclaimer: baseDisclaimer
     };
   }
 
-  const specialty = matchSpecialty(message);
   if (!specialty) {
     return {
-      intent: "unclear",
-      reply: "I couldn't clearly understand the health concern yet. Please describe the symptoms in a bit more detail, like 'stomach pain and nausea' or 'skin rash'.",
-      specialty: null,
-      urgency: "medium",
+      symptom_summary: "The symptoms are not clear enough to suggest a focused condition.",
+      possible_conditions: ["Unclear symptoms"],
+      urgency_level: "medium",
+      recommended_specialist: "General Physician",
+      next_steps: [
+        "Describe the main symptom more clearly.",
+        "Mention how long it has been happening.",
+        "Include any fever, pain, breathing trouble, or other warning signs."
+      ],
       emergency: false,
-      needsLocation: false,
-      needsMoreInfo: true,
-      followUpQuestion: "Can you tell me the main symptom and how long you have had it?",
-      symptomSummary: null
+      disclaimer: baseDisclaimer
     };
   }
 
   return {
-    intent: "symptom_check",
-    reply: `Based on what you shared, the best next step is to consult a ${specialty}.`,
-    specialty,
-    urgency: "medium",
+    symptom_summary: message,
+    possible_conditions: ["A condition related to the reported symptoms", "A mild or moderate infection", "An issue requiring clinical evaluation"],
+    urgency_level: "medium",
+    recommended_specialist: specialty || "General Physician",
+    next_steps: [
+      `Arrange a consultation with a ${specialty || "General Physician"}.`,
+      "Monitor whether the symptoms are improving or getting worse.",
+      "Seek urgent care sooner if severe symptoms appear."
+    ],
     emergency: false,
-    needsLocation: true,
-    needsMoreInfo: false,
-    followUpQuestion: null,
-    symptomSummary: message
+    disclaimer: baseDisclaimer
   };
 }
 
 function normalizeAssistantPayload(payload, originalMessage) {
-  const allowedIntents = new Set(["greeting", "help", "symptom_check", "specialist_search", "unclear", "emergency"]);
-  const allowedUrgency = new Set(["low", "medium", "high"]);
+  const fallback = fallbackAssistantResponse(originalMessage);
+  const allowedUrgency = new Set(["low", "medium", "high", "emergency"]);
+
+  const summaryCandidate = payload?.symptom_summary ?? payload?.symptomSummary ?? payload?.summary;
+  const possibleConditionsCandidate =
+    payload?.possible_conditions ?? payload?.possibleConditions ?? payload?.conditions;
+  const urgencyCandidate = payload?.urgency_level ?? payload?.urgency ?? payload?.urgencyLevel;
+  const specialistCandidate =
+    payload?.recommended_specialist ?? payload?.recommendedSpecialist ?? payload?.specialty;
+  const nextStepsCandidate = payload?.next_steps ?? payload?.nextSteps;
+  const disclaimerCandidate = payload?.disclaimer;
 
   const normalized = {
-    intent: allowedIntents.has(payload?.intent) ? payload.intent : "unclear",
-    reply: String(payload?.reply || "").trim(),
-    specialty: payload?.specialty ? String(payload.specialty).trim() : null,
-    urgency: allowedUrgency.has(payload?.urgency) ? payload.urgency : "medium",
+    symptom_summary: String(summaryCandidate || fallback.symptom_summary || originalMessage).trim(),
+    possible_conditions: Array.isArray(possibleConditionsCandidate)
+      ? possibleConditionsCandidate.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 3)
+      : [],
+    urgency_level: allowedUrgency.has(String(urgencyCandidate || "").trim())
+      ? String(urgencyCandidate).trim()
+      : fallback.urgency_level,
+    recommended_specialist: String(specialistCandidate || fallback.recommended_specialist).trim(),
+    next_steps: Array.isArray(nextStepsCandidate)
+      ? nextStepsCandidate.map((item) => String(item || "").trim()).filter(Boolean).slice(0, 4)
+      : [],
     emergency: Boolean(payload?.emergency),
-    needsLocation: Boolean(payload?.needsLocation),
-    needsMoreInfo: Boolean(payload?.needsMoreInfo),
-    followUpQuestion: payload?.followUpQuestion ? String(payload.followUpQuestion).trim() : null,
-    symptomSummary: payload?.symptomSummary ? String(payload.symptomSummary).trim() : originalMessage
+    disclaimer: String(disclaimerCandidate || DEFAULT_DISCLAIMER).trim() || DEFAULT_DISCLAIMER
   };
 
-  if (!normalized.reply) {
-    normalized.reply = fallbackAssistantResponse(originalMessage).reply;
+  if (normalized.possible_conditions.length === 0) {
+    normalized.possible_conditions = fallback.possible_conditions;
   }
 
-  return normalized;
+  if (normalized.next_steps.length === 0) {
+    normalized.next_steps = fallback.next_steps;
+  }
+
+  if (!normalized.recommended_specialist) {
+    normalized.recommended_specialist = fallback.recommended_specialist;
+  }
+
+  if (normalized.urgency_level === "emergency") {
+    normalized.emergency = true;
+  }
+
+  if (normalized.emergency && normalized.urgency_level !== "emergency") {
+    normalized.urgency_level = "emergency";
+  }
+
+  const compatibilityIntent = detectIntent(originalMessage);
+  const needsMoreInfo =
+    compatibilityIntent === "greeting" ||
+    compatibilityIntent === "help" ||
+    compatibilityIntent === "unclear";
+
+  return {
+    ...normalized,
+    intent: compatibilityIntent,
+    reply: buildReplyFromStructuredPayload(normalized),
+    specialty: normalized.recommended_specialist || null,
+    urgency: normalized.urgency_level === "emergency" ? "high" : normalized.urgency_level,
+    needsLocation: !normalized.emergency && !needsMoreInfo && Boolean(normalized.recommended_specialist),
+    needsMoreInfo,
+    followUpQuestion: needsMoreInfo ? "Can you share the main symptom, how long it has been happening, and whether it is getting worse?" : null,
+    symptomSummary: normalized.symptom_summary
+  };
 }
 
 async function callGemini(message, history) {
@@ -252,7 +400,7 @@ async function callGemini(message, history) {
     })),
     {
       role: "user",
-      parts: [{ text: message }]
+      parts: [{ text: `User symptoms or request: ${message}` }]
     }
   ];
 
@@ -264,7 +412,7 @@ async function callGemini(message, history) {
     },
     body: JSON.stringify({
       system_instruction: {
-        parts: [{ text: SYSTEM_PROMPT }]
+        parts: [{ text: STRUCTURED_SYSTEM_PROMPT }]
       },
       contents,
       generationConfig: {
@@ -286,7 +434,13 @@ async function callGemini(message, history) {
     throw new Error("Gemini response did not include structured text content.");
   }
 
-  return normalizeAssistantPayload(JSON.parse(content), message);
+  const parsed = safeJsonParse(content);
+  if (!parsed) {
+    logger.warn("Gemini returned invalid JSON. Falling back to safe structured response.", { content });
+    return normalizeAssistantPayload(null, message);
+  }
+
+  return normalizeAssistantPayload(parsed, message);
 }
 
 exports.chatAssistant = onCall(

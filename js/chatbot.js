@@ -12,15 +12,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const chatAssistant = httpsCallable(functions, 'chatAssistant');
 
     const symptomMap = [
-        { keywords: ['fever', 'cold', 'cough', 'flu', 'headache', 'body ache', 'fatigue', 'weakness', 'nausea', 'vomit'], specialty: 'General Physician', types: ['Hospital', 'General Hospital', 'Clinic'] },
-        { keywords: ['chest pain', 'heart', 'blood pressure', 'bp', 'palpitation', 'cardiac', 'cardiologist'], specialty: 'Cardiologist', types: ['Hospital', 'General Hospital'] },
+        { keywords: ['fever', 'cold', 'cough', 'flu', 'headache', 'body ache', 'fatigue', 'weakness', 'nausea', 'vomit'], specialty: 'General Physician', types: ['Hospital', 'General Hospital', 'Clinic', 'Healthcare Clinic', 'Polyclinic', 'Private Hospital'] },
+        { keywords: ['chest pain', 'heart', 'blood pressure', 'bp', 'palpitation', 'cardiac', 'cardiologist'], specialty: 'Cardiologist', types: ['Hospital', 'General Hospital', 'Private Hospital'] },
         { keywords: ['tooth', 'teeth', 'gum', 'dental', 'cavity', 'mouth', 'dentist'], specialty: 'Dentist', types: ['Dental Clinic', 'Hospital'] },
-        { keywords: ['skin', 'rash', 'acne', 'pimple', 'itch', 'allergy', 'eczema', 'hair loss', 'hair fall', 'dandruff', 'dermatologist'], specialty: 'Dermatologist', types: ['Skin & Hair Clinic', 'Hospital', 'Clinic'] },
-        { keywords: ['child', 'baby', 'infant', 'kid', 'pediatric', 'vaccination', 'pediatrician'], specialty: 'Pediatrician', types: ['Child Care Clinic', 'Hospital', 'General Hospital'] },
-        { keywords: ['bone', 'joint', 'fracture', 'knee', 'back pain', 'spine', 'shoulder', 'muscle', 'sprain', 'physiotherapy', 'paralysis', 'orthopedic', 'orthopaedic', 'physiotherapist'], specialty: 'Orthopedic / Physiotherapist', types: ['Physiotherapy Clinic', 'Hospital'] },
+        { keywords: ['skin', 'rash', 'acne', 'pimple', 'itch', 'allergy', 'eczema', 'hair loss', 'hair fall', 'dandruff', 'dermatologist'], specialty: 'Dermatologist', types: ['Skin & Hair Clinic', 'Skin Clinic', 'Hospital', 'Clinic'] },
+        { keywords: ['child', 'baby', 'infant', 'kid', 'pediatric', 'vaccination', 'pediatrician'], specialty: 'Pediatrician', types: ['Child Care Clinic', 'Hospital', 'General Hospital', 'Private Hospital'] },
+        { keywords: ['bone', 'joint', 'fracture', 'knee', 'back pain', 'spine', 'shoulder', 'muscle', 'sprain', 'physiotherapy', 'paralysis', 'orthopedic', 'orthopaedic', 'physiotherapist'], specialty: 'Orthopedic / Physiotherapist', types: ['Physiotherapy Clinic', 'Physiotherapy Centre', 'Hospital', 'Private Hospital'] },
         { keywords: ['stomach', 'digestion', 'gastric', 'acidity', 'diarrhea', 'constipation', 'abdomen', 'liver', 'gastroenterologist'], specialty: 'Gastroenterologist', types: ['Hospital', 'General Hospital', 'Clinic'] },
-        { keywords: ['eye', 'vision', 'blur', 'cataract', 'ophthalmologist'], specialty: 'Ophthalmologist', types: ['Hospital'] },
-        { keywords: ['ear', 'nose', 'throat', 'sore throat', 'sinus', 'hearing', 'ent', 'otolaryngologist'], specialty: 'ENT Specialist', types: ['Hospital', 'Clinic'] },
+        { keywords: ['eye', 'vision', 'blur', 'cataract', 'ophthalmologist'], specialty: 'Ophthalmologist', types: ['Hospital', 'Private Hospital'] },
+        { keywords: ['ear', 'nose', 'throat', 'sore throat', 'sinus', 'hearing', 'ent', 'otolaryngologist'], specialty: 'ENT Specialist', types: ['Hospital', 'Clinic', 'Private Hospital'] },
         { keywords: ['ayurveda', 'herbal', 'natural', 'panchakarma', 'yoga', 'ayurvedic'], specialty: 'Ayurvedic Practitioner', types: ['Ayurveda Centre', 'Clinic'] },
     ];
     const greetingWords = ['hi', 'hello', 'hey', 'hii', 'helo', 'good morning', 'good afternoon', 'good evening'];
@@ -130,9 +130,61 @@ document.addEventListener('DOMContentLoaded', () => {
             needsMoreInfo: Boolean(result.needsMoreInfo),
             followUpQuestion: typeof result.followUpQuestion === 'string' && result.followUpQuestion.trim() ? result.followUpQuestion.trim() : '',
             symptomSummary: typeof result.symptomSummary === 'string' && result.symptomSummary.trim() ? result.symptomSummary.trim() : '',
+            structuredSymptomSummary: typeof result.symptom_summary === 'string' && result.symptom_summary.trim() ? result.symptom_summary.trim() : '',
+            possibleConditions: Array.isArray(result.possible_conditions)
+                ? result.possible_conditions.map((item) => String(item || '').trim()).filter(Boolean)
+                : [],
+            urgencyLevel: typeof result.urgency_level === 'string' ? result.urgency_level : '',
+            recommendedSpecialist: typeof result.recommended_specialist === 'string' && result.recommended_specialist.trim()
+                ? result.recommended_specialist.trim()
+                : '',
+            nextSteps: Array.isArray(result.next_steps)
+                ? result.next_steps.map((item) => String(item || '').trim()).filter(Boolean)
+                : [],
+            disclaimer: typeof result.disclaimer === 'string' && result.disclaimer.trim() ? result.disclaimer.trim() : '',
             source: typeof result.source === 'string' ? result.source : 'unknown',
             model: typeof result.model === 'string' ? result.model : 'unknown'
         };
+    }
+
+    function buildStructuredAssistantMessages(result) {
+        const messages = [];
+        const summary = result.structuredSymptomSummary || result.symptomSummary;
+        const specialist = result.recommendedSpecialist || result.specialty;
+        const urgency = result.urgencyLevel || result.urgency;
+
+        if (summary) {
+            messages.push(`Symptom summary: ${summary}`);
+        }
+
+        if (result.possibleConditions.length > 0) {
+            messages.push(`Possible conditions: ${result.possibleConditions.join(', ')}`);
+        }
+
+        if (urgency) {
+            const urgencyLabel = urgency.charAt(0).toUpperCase() + urgency.slice(1);
+            messages.push(`Urgency level: ${urgencyLabel}`);
+        }
+
+        if (specialist) {
+            messages.push(`Recommended specialist: ${specialist}`);
+        }
+
+        if (result.nextSteps.length > 0) {
+            messages.push(`Next steps: ${result.nextSteps.join(' ')}`);
+        } else if (result.reply) {
+            messages.push(result.reply);
+        }
+
+        if (result.disclaimer) {
+            messages.push(result.disclaimer);
+        }
+
+        if (messages.length === 0 && result.reply) {
+            messages.push(result.reply);
+        }
+
+        return messages;
     }
 
     async function getAssistantAnalysis(text) {
@@ -173,9 +225,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function getSpecialtyConfig(specialtyName, symptomText = '') {
         if (specialtyName) {
-            const exactMatch = symptomMap.find(entry => entry.specialty.toLowerCase() === specialtyName.toLowerCase());
+            const normalizedSpecialtyName = normalizeText(specialtyName).replace(/\s+/g, '');
+            const exactMatch = symptomMap.find((entry) => {
+                const normalizedEntrySpecialty = normalizeText(entry.specialty).replace(/\s+/g, '');
+                return normalizedEntrySpecialty === normalizedSpecialtyName;
+            });
             if (exactMatch) {
                 return exactMatch;
+            }
+
+            const keywordMatch = symptomMap.find((entry) =>
+                entry.keywords.some((keyword) => containsKeyword(normalizeText(specialtyName), keyword))
+            );
+            if (keywordMatch) {
+                return keywordMatch;
             }
         }
 
@@ -200,10 +263,41 @@ document.addEventListener('DOMContentLoaded', () => {
         return { lat, lng, label: `Lat: ${lat.toFixed(4)}, Lng: ${lng.toFixed(4)}` };
     }
 
+    function findLocalLocationMatch(queryText) {
+        const normalizedQuery = normalizeText(queryText);
+        if (!normalizedQuery || normalizedQuery.length < 3) return null;
+
+        const matches = hospitals.filter((hospital) => {
+            const normalizedAddress = normalizeText(hospital.address);
+            const normalizedName = normalizeText(hospital.name);
+            return normalizedAddress.includes(normalizedQuery) || normalizedName.includes(normalizedQuery);
+        });
+
+        if (matches.length === 0) return null;
+
+        const center = matches.reduce((accumulator, hospital) => ({
+            lat: accumulator.lat + hospital.lat,
+            lng: accumulator.lng + hospital.lng
+        }), { lat: 0, lng: 0 });
+
+        return {
+            lat: center.lat / matches.length,
+            lng: center.lng / matches.length,
+            label: queryText,
+            source: 'local-dataset',
+            matchedClinics: matches.length
+        };
+    }
+
     async function geocodeLocation(queryText) {
         const coordinateInput = parseCoordinateInput(queryText);
         if (coordinateInput) {
             return coordinateInput;
+        }
+
+        const localLocationMatch = findLocalLocationMatch(queryText);
+        if (localLocationMatch) {
+            return localLocationMatch;
         }
 
         const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(queryText)}`;
@@ -214,7 +308,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         if (!response.ok) {
-            throw new Error('Location lookup failed');
+            throw new Error(`Location lookup failed (${response.status})`);
         }
 
         const results = await response.json();
@@ -398,13 +492,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const assistantResult = await getAssistantAnalysis(text);
         if (assistantResult && assistantResult.reply) {
-            lastSymptoms = assistantResult.symptomSummary || text;
-            lastSpecialty = assistantResult.specialty || '';
+            lastSymptoms = assistantResult.structuredSymptomSummary || assistantResult.symptomSummary || text;
+            lastSpecialty = assistantResult.recommendedSpecialist || assistantResult.specialty || '';
 
-            appendMessage(assistantResult.reply, 'bot');
+            const structuredMessages = buildStructuredAssistantMessages(assistantResult);
+            structuredMessages.forEach((message) => appendMessage(message, 'bot'));
 
-            let combinedBotResponse = assistantResult.reply;
-            if (assistantResult.followUpQuestion && !assistantResult.reply.includes(assistantResult.followUpQuestion)) {
+            let combinedBotResponse = structuredMessages.join(' ');
+            if (assistantResult.followUpQuestion) {
                 appendMessage(assistantResult.followUpQuestion, 'bot');
                 combinedBotResponse += ` ${assistantResult.followUpQuestion}`;
             }
