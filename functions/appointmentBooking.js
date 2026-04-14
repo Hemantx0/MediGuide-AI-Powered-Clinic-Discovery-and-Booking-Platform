@@ -1,5 +1,6 @@
 const { HttpsError } = require("firebase-functions/v2/https");
 const { getFirestore, Timestamp, FieldValue } = require("firebase-admin/firestore");
+const { normalizeClinicRecord } = require("./clinicRecords");
 
 const ADMIN_EMAILS = ["admin@vitalchat.com"];
 const ACTIVE_BOOKING_STATUSES = ["pending", "confirmed"];
@@ -42,13 +43,16 @@ function normalizeText(value) {
 }
 
 function assertValidClinic(clinic) {
-  if (!clinic || typeof clinic !== "object") {
+  const normalizedClinic = normalizeClinicRecord(clinic);
+  if (!normalizedClinic) {
     throw new HttpsError("invalid-argument", "A valid clinic object is required.");
   }
 
-  if (!normalizeText(clinic.clinicId) || !normalizeText(clinic.name)) {
+  if (!normalizeText(normalizedClinic.clinicId) || !normalizeText(normalizedClinic.name)) {
     throw new HttpsError("invalid-argument", "Clinic details are incomplete.");
   }
+
+  return normalizedClinic;
 }
 
 function assertValidDate(dateString) {
@@ -145,12 +149,12 @@ async function isAdminUser(user) {
 }
 
 async function ensureClinicSlots({ clinic, appointmentDate }) {
-  assertValidClinic(clinic);
+  const normalizedClinic = assertValidClinic(clinic);
   assertValidDate(appointmentDate);
 
   const db = getDb();
   const slotQuery = await db.collection("clinic_slots")
-    .where("clinicId", "==", clinic.clinicId)
+    .where("clinicId", "==", normalizedClinic.clinicId)
     .where("date", "==", appointmentDate)
     .get();
 
@@ -162,11 +166,11 @@ async function ensureClinicSlots({ clinic, appointmentDate }) {
   const batch = db.batch();
 
   DEFAULT_SLOT_TIMES.forEach((slot) => {
-    const docRef = db.collection("clinic_slots").doc(buildSlotDocId(clinic.clinicId, appointmentDate, slot.value));
+    const docRef = db.collection("clinic_slots").doc(buildSlotDocId(normalizedClinic.clinicId, appointmentDate, slot.value));
     batch.set(docRef, {
-      clinicId: clinic.clinicId,
-      clinicSource: clinic.source || "unknown",
-      clinicName: clinic.name || "",
+      clinicId: normalizedClinic.clinicId,
+      clinicSource: normalizedClinic.source || "unknown",
+      clinicName: normalizedClinic.name || "",
       date: appointmentDate,
       slotId: buildSlotId(appointmentDate, slot.value),
       slotTime: slot.label,
@@ -182,7 +186,7 @@ async function ensureClinicSlots({ clinic, appointmentDate }) {
   await batch.commit();
 
   const seededQuery = await db.collection("clinic_slots")
-    .where("clinicId", "==", clinic.clinicId)
+    .where("clinicId", "==", normalizedClinic.clinicId)
     .where("date", "==", appointmentDate)
     .get();
 
@@ -192,9 +196,8 @@ async function ensureClinicSlots({ clinic, appointmentDate }) {
 async function getClinicSlotsForRequest(request) {
   requireAuth(request);
 
-  const clinic = request.data?.clinic;
+  const clinic = assertValidClinic(request.data?.clinic);
   const appointmentDate = normalizeText(request.data?.appointmentDate);
-  assertValidClinic(clinic);
   assertValidDate(appointmentDate);
 
   const docs = await ensureClinicSlots({ clinic, appointmentDate });
@@ -230,7 +233,7 @@ function getBookingSource(value) {
 
 async function createAppointmentBooking(request) {
   const user = requireAuth(request);
-  const clinic = request.data?.clinic;
+  const clinic = assertValidClinic(request.data?.clinic);
   const appointmentDate = normalizeText(request.data?.appointmentDate);
   const slotId = normalizeText(request.data?.slotId);
   const specialty = normalizeText(request.data?.specialty) || "General consultation";
@@ -239,7 +242,6 @@ async function createAppointmentBooking(request) {
   const patientName = normalizeText(request.data?.patientName) || user.email;
   const patientEmail = normalizeText(request.data?.patientEmail) || user.email;
 
-  assertValidClinic(clinic);
   assertValidDate(appointmentDate);
 
   if (!slotId) {
@@ -299,12 +301,12 @@ async function createAppointmentBooking(request) {
       clinicId: clinic.clinicId,
       clinic: {
         clinicId: clinic.clinicId,
-        source: clinic.source || "unknown",
+        source: clinic.source,
         name: clinic.name,
-        address: clinic.address || "",
-        lat: clinic.lat ?? null,
-        lng: clinic.lng ?? null,
-        mapsUrl: clinic.mapsUrl || ""
+        address: clinic.address,
+        lat: clinic.lat,
+        lng: clinic.lng,
+        mapsUrl: clinic.mapsUrl
       },
       specialty,
       appointmentDate,
@@ -316,8 +318,10 @@ async function createAppointmentBooking(request) {
       createdAt: now,
       updatedAt: now,
       bookingSource,
-      clinicSource: clinic.source || "unknown",
+      clinicSource: clinic.source,
       reason,
+      // Keep these legacy fields for existing dashboard/admin rendering until
+      // all reads are fully moved to the normalized appointment schema.
       hospitalName: clinic.name,
       date: appointmentDate,
       time: freshSlot.slotTime

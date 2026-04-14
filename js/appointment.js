@@ -1,12 +1,7 @@
-import {
-  collection, getDocs,
-  query, where, orderBy
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { auth, db } from "./firebase.js";
+import { auth } from "./firebase.js";
 import { clinics as fallbackClinics } from "./clinic-data.js";
-import { bookAppointment, getClinicSlots, updateAppointmentStatus } from "./appointment-api.js";
-import { escapeHtml, getAppointmentStatusMeta, canUserCancelAppointment } from "./ui-utils.js";
+import { bookAppointment, getClinicSlots } from "./appointment-api.js";
+import { escapeHtml } from "./ui-utils.js";
 import { getSelectedClinic, normalizeClinic, saveSelectedClinic } from "./clinic-utils.js";
 
 const urlParams = new URLSearchParams(window.location.search);
@@ -395,81 +390,4 @@ window.openBookingModal = function(clinicId) {
     dateInput.value = today;
     loadAvailableSlots(clinic, today);
   }
-};
-
-window.cancelAppointment = async function(appointmentId) {
-  try {
-    await updateAppointmentStatus({
-      appointmentId,
-      status: "cancelled"
-    });
-    alert("Appointment cancelled successfully.");
-    window.loadMyAppointments();
-  } catch (error) {
-    alert(error.message || "Unable to cancel appointment.");
-  }
-};
-
-window.loadMyAppointments = async function() {
-  const listEl = document.getElementById("appointments-list");
-  if (!listEl) return;
-
-  onAuthStateChanged(auth, async (user) => {
-    if (!user) return;
-
-    listEl.innerHTML = '<p style="color:var(--text-secondary);">Loading appointments...</p>';
-
-    try {
-      const q = query(
-        collection(db, "appointments"),
-        where("userId", "==", user.uid),
-        orderBy("createdAt", "desc")
-      );
-      const snap = await getDocs(q);
-
-      if (snap.empty) {
-        listEl.innerHTML = '<p style="color:var(--text-secondary);">No appointments booked yet. <a href="appointment.html" style="color:var(--primary);">Book one now</a>.</p>';
-        return;
-      }
-
-      listEl.innerHTML = "";
-      snap.forEach((docSnap) => {
-        const appointment = docSnap.data();
-        const statusMeta = getAppointmentStatusMeta(appointment.status);
-        const clinicName = appointment.clinic?.name || appointment.hospitalName || "Clinic not available";
-        const specialty = appointment.specialty
-          ? `<p style="margin:0.35rem 0 0; color:var(--primary); font-size:0.85rem;">${escapeHtml(appointment.specialty)}</p>`
-          : "";
-        const createdAt = appointment.createdAt?.toDate
-          ? appointment.createdAt.toDate().toLocaleString()
-          : "";
-        const cancelAction = canUserCancelAppointment(appointment)
-          ? `<button class="btn-outline" style="margin-top:0.85rem;" onclick="cancelAppointment('${docSnap.id}')">Cancel Appointment</button>`
-          : "";
-
-        listEl.innerHTML += `
-          <div class="glass-card" style="padding:1.25rem; margin-bottom:1rem; border-left:4px solid ${statusMeta.color};">
-            <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:0.5rem;">
-              <div>
-                <strong style="font-size:1rem;">${escapeHtml(clinicName)}</strong><br>
-                <span style="color:var(--text-secondary); font-size:0.9rem;">
-                  <i class='bx bx-calendar'></i> ${escapeHtml(appointment.date || "-")} &nbsp;
-                  <i class='bx bx-time'></i> ${escapeHtml(appointment.time || "-")}
-                </span>
-                ${specialty}
-              </div>
-              <span style="background:${statusMeta.color}22; color:${statusMeta.color}; padding:3px 10px;
-                border-radius:20px; font-size:0.8rem; font-weight:600; text-transform:uppercase;">
-                ${statusMeta.label}
-              </span>
-            </div>
-            ${appointment.reason ? `<p style="margin:0.5rem 0 0; color:var(--text-secondary); font-size:0.9rem;">${escapeHtml(appointment.reason)}</p>` : ""}
-            ${createdAt ? `<p style="margin:0.45rem 0 0; color:var(--text-muted); font-size:0.82rem;">Booked on ${escapeHtml(createdAt)}</p>` : ""}
-            ${cancelAction}
-          </div>`;
-      });
-    } catch (err) {
-      listEl.innerHTML = '<p style="color:#ef4444;">Error loading appointments. Please refresh.</p>';
-    }
-  });
 };

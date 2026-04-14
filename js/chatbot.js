@@ -214,6 +214,28 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    function removeElement(element) {
+        if (element && typeof element.remove === 'function') {
+            element.remove();
+        }
+    }
+
+    function buildClinicSearchPayload(locationInput, specialist) {
+        if (typeof locationInput === 'string') {
+            return {
+                specialist,
+                locationText: locationInput
+            };
+        }
+
+        return {
+            specialist,
+            locationText: locationInput?.label || '',
+            lat: locationInput?.lat,
+            lng: locationInput?.lng
+        };
+    }
+
     function matchSpecialty(text) {
         const normalized = normalizeText(text);
         const matches = [];
@@ -455,6 +477,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        // Keep a lightweight client fallback so the symptom flow still responds
+        // if the callable assistant is temporarily unavailable.
         const match = matchSpecialty(text);
         if (!match) {
             botState = 'awaiting_symptom';
@@ -613,24 +637,3 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 });
-    function removeElement(element) {
-        if (element && typeof element.remove === 'function') {
-            element.remove();
-        }
-    }
-
-    function buildClinicSearchPayload(locationInput, specialist) {
-        if (typeof locationInput === 'string') {
-            return {
-                specialist,
-                locationText: locationInput
-            };
-        }
-
-        return {
-            specialist,
-            locationText: locationInput?.label || '',
-            lat: locationInput?.lat,
-            lng: locationInput?.lng
-        };
-    }

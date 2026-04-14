@@ -1,13 +1,17 @@
 import {
-  collection, getDocs, getDoc,
+  collection, getDocs, updateDoc,
   doc, query, orderBy
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 import { db, auth } from "./firebase.js";
-import { escapeHtml, getAppointmentStatusMeta } from "./ui-utils.js";
+import {
+  escapeHtml,
+  getAppointmentClinicName,
+  getAppointmentDateTimeLabel,
+  getAppointmentStatusMeta
+} from "./ui-utils.js";
 import { updateAppointmentStatus } from "./appointment-api.js";
-
-const ADMIN_EMAILS = ["admin@vitalchat.com"];
+import { isAdminUser } from "./admin-utils.js";
 
 function showToast(message, type = 'info') {
   const existing = document.querySelector('.admin-toast');
@@ -79,20 +83,6 @@ function renderAppointmentActions(appointmentId, status) {
   `;
 }
 
-async function isAdminUser(user) {
-  if (!user) return false;
-  if (ADMIN_EMAILS.includes(user.email || "")) return true;
-
-  try {
-    const userDoc = await getDoc(doc(db, "users", user.uid));
-    if (!userDoc.exists()) return false;
-    return userDoc.data().role === "admin";
-  } catch (error) {
-    console.error("Admin role check failed:", error);
-    return false;
-  }
-}
-
 async function updateStats() {
   const appointmentSnap = await getDocs(query(collection(db, "appointments"), orderBy("createdAt", "desc")));
   const chatSnap = await getDocs(query(collection(db, "chat_logs"), orderBy("timestamp", "desc")));
@@ -160,7 +150,7 @@ async function loadAllAppointments() {
         return;
       }
       const statusMeta = getAppointmentStatusMeta(appointmentStatus);
-      const clinicName = a.clinic?.name || a.hospitalName || "-";
+      const clinicName = getAppointmentClinicName(a);
       const specialty = a.specialty ? `<div style="margin-top:0.35rem; color:#2563eb; font-size:0.8rem;">${escapeHtml(a.specialty)}</div>` : "";
       const createdAt = a.createdAt?.toDate ? a.createdAt.toDate().toLocaleString() : "";
       tbody.innerHTML += `
@@ -169,7 +159,7 @@ async function loadAllAppointments() {
           <td>${escapeHtml(a.patientEmail || '-')}</td>
           <td>${escapeHtml(clinicName)}${specialty}</td>
           <td>
-            ${escapeHtml(`${a.appointmentDate || a.date || '-'} ${a.slotTime || a.time || ''}`.trim())}
+            ${escapeHtml(getAppointmentDateTimeLabel(a))}
             ${createdAt ? `<div style="margin-top:0.35rem; color:#94a3b8; font-size:0.78rem;">Booked ${escapeHtml(createdAt)}</div>` : ""}
           </td>
           <td>
@@ -192,8 +182,8 @@ async function loadAllAppointments() {
       tbody.innerHTML = `
         <tr>
           <td colspan="6" style="color:#ef4444; line-height:1.6;">
-            Chat logs are blocked by Firestore rules for this account.
-            Allow admin read access to the <strong>chat_logs</strong> collection in Firebase to use Chatbot Log Review.
+            Appointment data is blocked by Firestore rules for this account.
+            Allow admin read access to the <strong>appointments</strong> collection in Firebase to review bookings here.
           </td>
         </tr>`;
       return;
