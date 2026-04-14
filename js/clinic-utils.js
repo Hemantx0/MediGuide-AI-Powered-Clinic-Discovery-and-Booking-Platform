@@ -1,13 +1,12 @@
 export const SELECTED_CLINIC_STORAGE_KEY = "selectedClinic";
 
-function normalizeText(value) {
+function normalizeIdPart(value) {
   return String(value || "")
-    .toLowerCase()
     .trim()
-    .replace(/[^\w\s.-]/g, "-")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
+    .toLowerCase()
+    .replace(/[^\w.-]/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
 }
 
 function formatCoordinate(value) {
@@ -18,12 +17,12 @@ function formatCoordinate(value) {
 function buildFallbackClinicId(source, clinic) {
   const providerPart = clinic.providerId || clinic.placeId || clinic.id || clinic.osmId;
   if (providerPart) {
-    return `${source}_${normalizeText(providerPart)}`;
+    return `${normalizeIdPart(source) || "unknown"}_${normalizeIdPart(providerPart)}`;
   }
 
   const latPart = formatCoordinate(clinic.lat ?? clinic.latitude);
   const lngPart = formatCoordinate(clinic.lng ?? clinic.longitude);
-  return `${source}_${latPart}_${lngPart}`;
+  return `${normalizeIdPart(source) || "unknown"}_${latPart}_${lngPart}`;
 }
 
 export function normalizeClinic(clinic, context = {}) {

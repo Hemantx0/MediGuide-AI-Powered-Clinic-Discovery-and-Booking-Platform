@@ -50,6 +50,22 @@ export function canUserCancelAppointment(appointment) {
   return ["pending", "confirmed"].includes(normalizedStatus) && isFutureAppointment(appointment);
 }
 
+export function getAppointmentClinicName(appointment) {
+  return appointment?.clinic?.name || appointment?.hospitalName || "Clinic not available";
+}
+
+export function getAppointmentDisplayDate(appointment) {
+  return appointment?.appointmentDate || appointment?.date || "-";
+}
+
+export function getAppointmentDisplayTime(appointment) {
+  return appointment?.slotTime || appointment?.time || "-";
+}
+
+export function getAppointmentDateTimeLabel(appointment) {
+  return `${getAppointmentDisplayDate(appointment)} ${getAppointmentDisplayTime(appointment)}`.trim();
+}
+
 function parseDisplayTimeToValue(timeLabel) {
   const match = String(timeLabel || "").trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
   if (!match) {

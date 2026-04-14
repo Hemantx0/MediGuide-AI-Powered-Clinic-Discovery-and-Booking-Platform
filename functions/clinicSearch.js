@@ -1,4 +1,5 @@
 const fallbackClinics = require("./fallbackClinics");
+const { buildStableClinicId, normalizeClinicRecord } = require("./clinicRecords");
 const {
   BROAD_FALLBACK_RADIUS_METERS,
   DEFAULT_SEARCH_RADIUS_METERS,
@@ -129,30 +130,6 @@ async function resolveCoordinates({ locationText, lat, lng }) {
 
 function buildMapsUrl(lat, lng) {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lng}`)}`;
-}
-
-function formatCoordinateForId(value) {
-  const parsed = Number.parseFloat(value);
-  return Number.isFinite(parsed) ? parsed.toFixed(5) : "na";
-}
-
-function normalizeIdPart(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^\w.-]/g, "_")
-    .replace(/_+/g, "_")
-    .replace(/^_+|_+$/g, "");
-}
-
-function buildStableClinicId({ source, providerId, lat, lng }) {
-  const normalizedSource = normalizeIdPart(source) || "unknown";
-  const normalizedProviderId = normalizeIdPart(providerId);
-  if (normalizedProviderId) {
-    return `${normalizedSource}_${normalizedProviderId}`;
-  }
-
-  return `${normalizedSource}_${formatCoordinateForId(lat)}_${formatCoordinateForId(lng)}`;
 }
 
 function buildAddressFromTags(tags = {}) {
@@ -648,18 +625,14 @@ function fallbackLocalSearch({ specialist, coordinates }) {
 }
 
 function attachClinicContext(clinics, specialist, resolvedLocation) {
-  return (clinics || []).map((clinic) => ({
-    ...clinic,
-    clinicId: clinic.clinicId || buildStableClinicId({
-      source: clinic.source,
-      providerId: clinic.providerId || clinic.placeId,
-      lat: clinic.lat,
-      lng: clinic.lng
-    }),
-    source: clinic.source || "unknown",
-    specialtyMatched: specialist,
-    searchContext: resolvedLocation || ""
-  }));
+  return (clinics || []).map((clinic) => {
+    const normalizedClinic = normalizeClinicRecord(clinic, {
+      specialtyMatched: specialist,
+      searchContext: resolvedLocation || ""
+    });
+
+    return normalizedClinic ? { ...clinic, ...normalizedClinic } : clinic;
+  });
 }
 
 async function findNearbyClinics({ specialist, locationText, lat, lng, radius, city, state }) {
