@@ -1,3 +1,4 @@
 functions-emulator.out.log
 functions-emulator.err.log
 firebase-debug.log
+node_modules
