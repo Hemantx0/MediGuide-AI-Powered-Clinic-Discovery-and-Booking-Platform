@@ -1,4 +1,4 @@
-# 🛡️ Vital Chat
+# 🛡️ Medi Guide
 
 ![HTML5](https://img.shields.io/badge/HTML5-E34F26?style=for-the-badge&logo=html5&logoColor=white)
 ![CSS3](https://img.shields.io/badge/CSS3-1572B6?style=for-the-badge&logo=css3&logoColor=white)
@@ -7,13 +7,13 @@
 ![AI](https://img.shields.io/badge/Gemini%20AI-Assistant-10B981?style=for-the-badge)
 ![Node.js](https://img.shields.io/badge/Node.js-Functions-339933?style=for-the-badge&logo=node.js&logoColor=white)
 
-Vital Chat is a production-style healthcare chatbot prototype that guides a patient from symptom intake to clinic discovery and appointment booking. It combines a clean browser-based frontend with Firebase-powered backend functions for AI-assisted symptom guidance, nearby clinic search, and scheduling flows.
+Medi Guide is a production-style healthcare chatbot prototype that guides a patient from symptom intake to clinic discovery and appointment booking. It combines a clean browser-based frontend with Firebase-powered backend functions for AI-assisted symptom guidance, nearby clinic search, and scheduling flows.
 
 It provides a seamless user experience focused on intuitive healthcare accessibility, secure booking management, and clear, structured medical guidance.
 
 ## 🌐 Live Website
 
-- Website: [vital-chat.web.app](#) *(Replace with actual deployed link if applicable)*
+- Website: [Medi-Guide.web.app](https://vitalchat-bot.netlify.app/) 
 - Repository: [GitHub Repository](https://github.com/Hemantx0/Vital-chatbot-)
 
 ## ✨ Highlights
