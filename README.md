@@ -1,4 +1,4 @@
-# 🛡️ Medi Guide
+# 🛡️ MediGuide
 
 ![HTML5](https://img.shields.io/badge/HTML5-E34F26?style=for-the-badge&logo=html5&logoColor=white)
 ![CSS3](https://img.shields.io/badge/CSS3-1572B6?style=for-the-badge&logo=css3&logoColor=white)
@@ -7,7 +7,7 @@
 ![AI](https://img.shields.io/badge/Gemini%20AI-Assistant-10B981?style=for-the-badge)
 ![Node.js](https://img.shields.io/badge/Node.js-Functions-339933?style=for-the-badge&logo=node.js&logoColor=white)
 
-Medi Guide is a production-style healthcare chatbot prototype that guides a patient from symptom intake to clinic discovery and appointment booking. It combines a clean browser-based frontend with Firebase-powered backend functions for AI-assisted symptom guidance, nearby clinic search, and scheduling flows.
+MediGuide is a production-style healthcare chatbot prototype that guides a patient from symptom intake to clinic discovery and appointment booking. It combines a clean browser-based frontend with Firebase-powered backend functions for AI-assisted symptom guidance, nearby clinic search, and scheduling flows.
 
 It provides a seamless user experience focused on intuitive healthcare accessibility, secure booking management, and clear, structured medical guidance.
 
@@ -26,9 +26,9 @@ It provides a seamless user experience focused on intuitive healthcare accessibi
 - ☁️ Firebase backend integration (Functions, Firestore, Auth)
 - 🌙 Modern, responsive web UI with clean aesthetics
 
-## 🧠 What Vital Chat Does
+## 🧠 What MediGuide Does
 
-Vital Chat helps patients describe their symptoms naturally, receive structured specialist guidance, discover nearby clinics by location, and continue directly into slot-based appointment booking without losing context. 
+MediGuide helps patients describe their symptoms naturally, receive structured specialist guidance, discover nearby clinics by location, and continue directly into slot-based appointment booking without losing context. 
 
 Alongside that, the **Care Assistant AI** provides structured health guidance, evaluates symptom urgency, and suggests the most relevant specialists, while maintaining a clear medical disclaimer and fallback mechanisms.
 
@@ -96,7 +96,7 @@ The project structure is organized for clarity and separation of concerns:
 
 ## 🔒 Security & Privacy
 
-Vital Chat is built with data security and safe AI practices in mind:
+MediGuide is built with data security and safe AI practices in mind:
 - Firebase rules-based protection for user data
 - Sensitive credentials (like the Gemini API key) kept strictly server-side in `.env`
 - AI responses strictly typed and sanitized for consistent structured JSON output
@@ -104,7 +104,7 @@ Vital Chat is built with data security and safe AI practices in mind:
 
 ## ⚠️ Medical Disclaimer
 
-**Vital Chat AI is not a substitute for professional medical advice, diagnosis, or treatment.**  
+**MediGuide AI is not a substitute for professional medical advice, diagnosis, or treatment.**  
 It is a portfolio prototype intended for general informational guidance only. It does not replace emergency services or substitute for a licensed medical professional. Users should always consult a qualified medical professional for serious or urgent health concerns.
 
 ## 🚀 Getting Started
@@ -159,7 +159,7 @@ Built by **Hemant**
 
 ## 📌 Project Status
 
-Vital Chat is a portfolio prototype demonstrating a production-style patient journey, exploring AI-assisted triage, clinic search, and scheduling. It is intended for learning and showcase purposes.
+MediGuide is a portfolio prototype demonstrating a production-style patient journey, exploring AI-assisted triage, clinic search, and scheduling. It is intended for learning and showcase purposes.
 
 ---
 
