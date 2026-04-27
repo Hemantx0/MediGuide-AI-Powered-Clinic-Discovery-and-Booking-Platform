@@ -39,7 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let lastClinicSearchPayload = null;
     let hasRequestedLocation = false;
     const chatSessionId = `session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const initialAssistantMessage = "Hello! I am your Vital Chat medical assistant. Please describe your symptoms or tell me what kind of specialist you're looking for!";
+    const initialAssistantMessage = "Hello! I am your MediGuide medical assistant. Please describe your symptoms or tell me what kind of specialist you're looking for!";
     const conversationHistory = [
         {
             role: 'assistant',
